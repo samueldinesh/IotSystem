@@ -1,0 +1,2 @@
+paho-mqtt>=1.6.1
+prettytable>=3.9.0
