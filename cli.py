@@ -118,8 +118,8 @@ def list_sensors(args):
     
     for s in sensors:
         # Format timestamp
-        last_updated = s['last_updated'][:19] if s['last_updated'] else "N/A"
-        table.add_row([s['sensor_id'], s['value'], last_updated])
+        updated_at = s['updated_at'][:19] if s['updated_at'] else "N/A"
+        table.add_row([s['sensor_id'], s['latest_value'], updated_at])
         
     print(table)
     conn.close()
