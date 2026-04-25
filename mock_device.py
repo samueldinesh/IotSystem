@@ -28,7 +28,8 @@ def main():
     
     args = parser.parse_args()
     
-    client = mqtt.Client()
+    from paho.mqtt.enums import CallbackAPIVersion
+    client = mqtt.Client(CallbackAPIVersion.VERSION2)
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
     client.loop_start()
     

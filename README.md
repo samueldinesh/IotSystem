@@ -2,99 +2,122 @@
 
 A robust, stateful, multi-process Alarm Evaluation Service for Linux-based IoT Gateways.
 
-## Architecture Highlights
-- **Parallel Execution**: Uses Python's `multiprocessing` to distribute rule evaluation across CPU cores.
-- **Stateful via SQLite**: Utilizes SQLite with WAL (Write-Ahead Logging) to persist evaluation states across unexpected reboots, ensuring time-based rules are not reset.
-- **MQTT Ingestion & Egress**: Integrates cleanly into existing local IoT topologies via Mosquitto.
+---
 
-## Prerequisites
-- Docker & Docker Compose (for running Mosquitto easily)
-- Python 3.8+
-- Git
+## 🛠️ Platform Setup & Prerequisites
 
-## 1. Setup
+Before running the service, ensure you have the following installed on your system:
 
-### Start the MQTT Broker
-We use Eclipse Mosquitto as the local MQTT broker.
+- **Python 3.8+** (Required for the service and CLI)
+- **Docker & Docker Compose** (Required for the MQTT Broker)
+- **Git** (For version control)
+
+### 💻 Environment Specifics
+
+#### Windows (Native)
+
+1. **Virtual Env**: `python -m venv venv` then `venv\Scripts\activate`.
+2. **Dependencies**: `pip install -r requirements.txt`.
+
+#### Linux (Ubuntu/Debian) / Windows (WSL 2)
+
+1. **System Deps**: `sudo apt update && sudo apt install python3-pip python3-venv sqlite3 -y`.
+2. **Virtual Env**: `python3 -m venv venv` then `source venv/bin/activate`.
+3. **Dependencies**: `pip install -r requirements.txt`.
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Start the MQTT Broker
+
+Ensure Docker is running and execute:
+
 ```bash
 docker-compose up -d
 ```
 
-### Install Dependencies
-```bash
-python -m venv venv
-# On Windows: venv\Scripts\activate
-# On Linux: source venv/bin/activate
-pip install -r requirements.txt
-```
+### 2. Run the Alarm Service
 
-## 2. Running the Service
+This daemon subscribes to MQTT, spawns parallel worker processes, and evaluates rules.
 
-Start the main alarm daemon. This will automatically initialize the database (`data/alarms.db`) if it doesn't exist, spawn worker processes, and connect to MQTT.
 ```bash
+# Ensure venv is activated
 python -m app.main
 ```
 
-## 3. Configuring Rules via CLI
+### 3. Configure Alarm Rules (CLI)
 
-Open a new terminal (ensure the venv is activated).
+Open a **new terminal** (with venv active) to use the Command Line Interface.
 
 **Add a Simple Rule:**
-Trigger if `temp_1` is > 24 for 10 seconds.
+
 ```bash
-python cli.py add-rule --name "High Temp Warning" --type SIMPLE --primary-sensor temp_1 --operator ">" --threshold 24 --duration 10
+python cli.py add-rule --name "High Temp" --type SIMPLE --primary-sensor temp_1 --operator ">" --threshold 24 --duration 10
 ```
 
 **Add a Conditional Rule:**
-Trigger if `temp_1` > 24 for 10 seconds, BUT ONLY IF `current_1` > 0.
+
 ```bash
-python cli.py add-rule --name "High Temp While Running" --type CONDITIONAL --primary-sensor temp_1 --operator ">" --threshold 24 --duration 10 --shunt-sensor current_1 --shunt-operator ">" --shunt-threshold 0
+python cli.py add-rule --name "Machine Overheat" --type CONDITIONAL --primary-sensor temp_1 --operator ">" --threshold 24 --duration 10 --shunt-sensor motor_status --shunt-operator "==" --shunt-threshold 1
 ```
 
-**List Rules:**
-```bash
-python cli.py list-rules
-```
+---
 
-## 4. Testing & Verification
+## 🧪 Testing & Verification
 
-We have provided a mock device script to publish data.
+We have provided a **Mock Device** script to simulate real IoT sensor data.
 
-1. **Publish Data (Below Threshold):**
+1. **Simulate a Breach**:
    ```bash
-   python mock_device.py --sensor temp_1 --value 20
+   python mock_device.py --sensor temp_1 --value 28
    ```
-   Check the daemon logs. Nothing should happen.
+2. **Observe Logs**: The service will log `Starting evaluation duration timer`.
+3. **Wait for Duration**: After 10 seconds, the alarm will trigger and publish to the `alarms/active` MQTT topic.
+4. **Check Status**:
+    ```bash
+    # View all current rules
+    python cli.py list-rules
 
-2. **Publish Data (Above Threshold):**
+    # View latest incoming sensor data
+    python cli.py sensors
+
+    # View triggered or evaluating alarms
+    python cli.py active-alarms
+    
+    # View historical alarms
+    python cli.py history
+
+    # Delete a rule by ID
+    python cli.py delete-rule --id 1
+    ```
+
+---
+
+## 🧹 Shutdown & Cleanup
+
+To stop the system and clear temporary data:
+
+1. **Stop the Alarm Service**: Press `Ctrl+C` in the terminal where `app.main` is running.
+2. **Stop the MQTT Broker**:
    ```bash
-   python mock_device.py --sensor temp_1 --value 25
+   docker-compose down
    ```
-   The daemon logs will show: `[Worker] Rule High Temp Warning breached. Starting evaluation.`
-
-3. **Check Active Alarms:**
-   Run `python cli.py active-alarms`. You will see the rule is in the `EVALUATING` state.
-
-4. **Wait for Duration (10s), then publish again:**
+3. **Reset the Database (Optional)**:
    ```bash
-   python mock_device.py --sensor temp_1 --value 26
+   # Remove the local SQLite database
+   rm data/alarms.db
    ```
-   The daemon logs will show `ALARM TRIGGERED`. The alarm is published to the `alarms/active` MQTT topic.
 
-5. **Check Alarm History:**
-   ```bash
-   python cli.py history
-   ```
-   You will see the historical record of the trigger.
+---
 
-6. **Recover the Alarm:**
-   ```bash
-   python mock_device.py --sensor temp_1 --value 20
-   ```
-   The daemon logs will show: `[Worker] Rule High Temp Warning recovered.`
+## 📑 Architecture & Data Flow
 
-## 5. Listening to Output Alarms
-To verify the service is publishing alarms correctly, you can subscribe to the output topic using mosquitto clients or a python script:
-```bash
-docker exec -it mosquitto-broker mosquitto_sub -t "alarms/active"
-```
+This project follows an **Event-Driven Architecture**:
+- **Ingestion**: Decoupled via `multiprocessing.Queue`.
+- **Parallelism**: Adaptive worker pool based on CPU core count.
+- **Persistence**: Stateful evaluation stored in SQLite (WAL mode) to survive power cycles.
+- **Standards**: All timing is evaluated using Naive UTC to ensure industrial precision.
+
+> [!TIP]
+> This project is designed for **Linux-based IoT Gateways**. Running in WSL 2 is the recommended way to test the Linux-like behavior on a Windows machine.

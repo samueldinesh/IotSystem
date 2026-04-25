@@ -1,13 +1,23 @@
 import sqlite3
 import os
+import platform
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'alarms.db')
+# Detect WSL to avoid disk I/O locking errors on /mnt/c
+if platform.system() == "Linux" and "microsoft" in platform.release().lower():
+    DB_PATH = '/tmp/alarms.db'
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'alarms.db')
 
 def get_connection():
-    # Enable WAL mode for better concurrent read/write
-    conn = sqlite3.connect(DB_PATH)
+    # Enable a generous timeout to prevent 'database is locked' during high concurrency
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.row_factory = sqlite3.Row
-    conn.execute('pragma journal_mode=wal')
+    try:
+        # Enable WAL mode for better concurrent read/write
+        conn.execute('pragma journal_mode=wal')
+    except sqlite3.OperationalError:
+        # WAL mode can throw 'disk I/O error' on WSL 2 when accessing /mnt/c/ drives due to lack of mmap/locking support
+        pass
     return conn
 
 def init_db():
@@ -27,7 +37,9 @@ def init_db():
             duration INTEGER NOT NULL, -- in seconds
             shunt_sensor TEXT,
             shunt_operator TEXT,
-            shunt_threshold REAL
+            shunt_threshold REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
