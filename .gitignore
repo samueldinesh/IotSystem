@@ -1,0 +1,23 @@
+# Virtual Environments
+venv/
+venv_linux/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database and Data
+*.db
+*.db-journal
+*.db-wal
+data/
+
+# Documentation and Reports (as requested)
+Architecture_Document.md
+Test_Report.md
+
+# Logs
+*.log
